@@ -114,13 +114,13 @@ Day3/
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `DATABASE_URL` | PostgreSQL connection | `postgresql://localhost/ivr_db` |
+| `DATABASE_URL` | PostgreSQL connection | `postgresql://localhost/ivr` |
 | `REDIS_HOST` | Redis host | `localhost` |
 | `PLIVO_AUTH_ID` | Plivo auth ID | From Plivo console |
 | `PLIVO_AUTH_TOKEN` | Plivo auth token | From Plivo console |
-| `PLIVO_PHONE_NUMBER` | Plivo phone number | `+16172386217` |
+| `PLIVO_PHONE_NUMBER` | Plivo phone number | `+16133323321` |
 | `SALES_TRANSFER_NUMBER` | Sales transfer destination | `+1234567890` |
-| `SUPPORT_TRANSFER_NUMBER` | Support transfer destination | `+919019841867` |
+| `SUPPORT_TRANSFER_NUMBER` | Support transfer destination | `+913432223454` |
 | `WEBHOOK_BASE_URL` | Public webhook URL | `https://xxx.ngrok.dev` |
 
 ## Development
