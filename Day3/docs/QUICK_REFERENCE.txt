@@ -1,0 +1,248 @@
+╔════════════════════════════════════════════════════════════════════════════╗
+║                    MODELS QUICK REFERENCE CARD                            ║
+║                Three Tables, One IVR System                               ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+┌─ MODEL #1: MenuConfiguration ────────────────────────────────────────────┐
+│  TABLE: menu_configurations                                              │
+│  PURPOSE: Define the IVR structure (the blueprint)                       │
+│                                                                           │
+│  ┌─ KEY FIELDS                                                          │
+│  │  menu_id ───────────→ "main_menu", "sales_menu", etc. (unique)      │
+│  │  message ───────────→ "Press 1 for Sales, 2 for Support..."         │
+│  │  digit_actions ────→ {"1": "sales_menu", "2": "support_menu"}       │
+│  │  timeout ──────────→ 5 (seconds to wait for input)                  │
+│  │  action_type ──────→ "menu", "transfer", or "hangup"                │
+│  │  parent_menu_id ───→ NULL (root) or "main_menu" (child)             │
+│  │  is_active ────────→ True/False (enable/disable without deleting)   │
+│  └─                                                                      │
+│                                                                           │
+│  ┌─ EXAMPLE ROW                                                         │
+│  │  {                                                                    │
+│  │    "menu_id": "main_menu",                                          │
+│  │    "message": "Welcome! Press 1 for Sales, 2 for Support",          │
+│  │    "digit_actions": {"1": "sales_menu", "2": "support_menu"},       │
+│  │    "timeout": 5,                                                     │
+│  │    "action_type": "menu",                                            │
+│  │    "parent_menu_id": null,                                           │
+│  │    "is_active": true                                                 │
+│  │  }                                                                    │
+│  └─                                                                      │
+│                                                                           │
+│  ┌─ METHODS                                                             │
+│  │  validate_digit(digit)  → True if digit is valid option             │
+│  │  get_digit_option(digit) → Returns next menu_id                     │
+│  │  is_leaf_menu()         → True if dead-end menu                     │
+│  │  to_dict()              → Convert to JSON                           │
+│  └─                                                                      │
+│                                                                           │
+│  💡 KEY INSIGHT:                                                         │
+│     This is configuration-driven design. Change the database,            │
+│     the app behavior changes immediately. No code changes!              │
+└───────────────────────────────────────────────────────────────────────┘
+
+┌─ MODEL #2: CallLog ──────────────────────────────────────────────────────┐
+│  TABLE: call_logs                                                        │
+│  PURPOSE: Permanent record of each phone call (audit trail)              │
+│                                                                           │
+│  ┌─ KEY FIELDS                                                          │
+│  │  call_uuid ────────→ "4f3a4e5c-b2d8-4a7f-9c1e-3b8f6a9d2e1c" (unique)│
+│  │  from_number ──────→ "+15551234567" (who called)                     │
+│  │  to_number ────────→ "+15559876543" (your Plivo number)              │
+│  │  start_time ───────→ "2026-01-29T10:00:00Z"                         │
+│  │  end_time ─────────→ "2026-01-29T10:05:30Z"                         │
+│  │  duration ─────────→ 330 (seconds)                                   │
+│  │  menu_path ────────→ ["main_menu", "sales_menu"] (path taken)       │
+│  │  user_inputs ──────→ [{"digit": "1", "menu": "main"}] (buttons)     │
+│  │  call_status ──────→ "completed", "abandoned", or "error"           │
+│  └─                                                                      │
+│                                                                           │
+│  ┌─ EXAMPLE ROW                                                         │
+│  │  {                                                                    │
+│  │    "call_uuid": "4f3a4e5c-b2d8-4a7f-9c1e-3b8f6a9d2e1c",             │
+│  │    "from_number": "+15551234567",                                    │
+│  │    "to_number": "+15559876543",                                      │
+│  │    "start_time": "2026-01-29T10:00:00Z",                            │
+│  │    "end_time": "2026-01-29T10:05:30Z",                              │
+│  │    "duration": 330,                                                  │
+│  │    "menu_path": ["main_menu", "sales_menu", "sales_new"],           │
+│  │    "user_inputs": [                                                  │
+│  │      {"digit": "1", "menu": "main_menu"},                            │
+│  │      {"digit": "1", "menu": "sales_menu"}                            │
+│  │    ],                                                                 │
+│  │    "call_status": "completed"                                        │
+│  │  }                                                                    │
+│  └─                                                                      │
+│                                                                           │
+│  ┌─ METHODS                                                             │
+│  │  calculate_duration() → Returns duration in seconds                  │
+│  │  to_dict()            → Convert to JSON                              │
+│  └─                                                                      │
+│                                                                           │
+│  💡 KEY INSIGHT:                                                         │
+│     One row per call. If someone calls 5 times, you have 5 rows.        │
+│     menu_path and user_inputs are stored as JSON arrays for             │
+│     complete call journey tracking.                                     │
+└───────────────────────────────────────────────────────────────────────┘
+
+┌─ MODEL #3: CallerHistory ────────────────────────────────────────────────┐
+│  TABLE: caller_history                                                   │
+│  PURPOSE: Summary profile of each unique caller (aggregated stats)       │
+│                                                                           │
+│  ┌─ KEY FIELDS                                                          │
+│  │  phone_number ───────→ "+15551234567" (unique identifier)            │
+│  │  total_calls ────────→ 5 (how many times they called)                │
+│  │  first_call_at ──────→ "2026-01-20T14:00:00Z"                        │
+│  │  last_call_at ───────→ "2026-01-29T10:00:00Z"                        │
+│  │  total_duration ─────→ 1200 (seconds across all calls)               │
+│  │  preferred_language ─→ "en", "es", "fr" (for TTS)                    │
+│  │  metadata ───────────→ {"account": "ACC123", "vip": true} (custom)  │
+│  └─                                                                      │
+│                                                                           │
+│  ┌─ EXAMPLE ROW                                                         │
+│  │  {                                                                    │
+│  │    "phone_number": "+15551234567",                                   │
+│  │    "total_calls": 5,                                                 │
+│  │    "first_call_at": "2026-01-20T14:00:00Z",                          │
+│  │    "last_call_at": "2026-01-29T10:00:00Z",                           │
+│  │    "total_duration": 1200,                                           │
+│  │    "average_duration": 240,  ← Calculated: 1200 / 5                  │
+│  │    "preferred_language": "en",                                       │
+│  │    "metadata": {                                                      │
+│  │      "account_number": "ACC123456",                                  │
+│  │      "customer_tier": "premium",                                     │
+│  │      "vip": true,                                                    │
+│  │      "notes": "Prefers email follow-up"                              │
+│  │    }                                                                  │
+│  │  }                                                                    │
+│  └─                                                                      │
+│                                                                           │
+│  ┌─ METHODS                                                             │
+│  │  average_call_duration() → Returns avg duration per call             │
+│  │  is_returning_caller()   → True if total_calls > 1                   │
+│  │  update_from_call_log()  → Update after each call                    │
+│  │  to_dict()               → Convert to JSON                           │
+│  └─                                                                      │
+│                                                                           │
+│  💡 KEY INSIGHT:                                                         │
+│     One row per phone number (unique caller). When they call back,       │
+│     we instantly know who they are and their history. Fast lookup!       │
+└───────────────────────────────────────────────────────────────────────┘
+
+┌─ SIDE-BY-SIDE COMPARISON ────────────────────────────────────────────────┐
+│                                                                           │
+│  MenuConfiguration    │ CallLog           │ CallerHistory              │
+│  ─────────────────    │ ───────           │ ──────────────              │
+│  Blueprint            │ Detail/Instance   │ Summary/Profile             │
+│  One per menu         │ One per call      │ One per caller              │
+│  Static (rarely       │ Dynamic (grows    │ Updates with each           │
+│  changes)             │ with each call)   │ call from that caller       │
+│                       │                   │                             │
+│  "What should        │ "What happened    │ "Who is this and             │
+│  the caller hear?"   │ in this call?"    │ what's their history?"      │
+│                       │                   │                             │
+│  Used to:            │ Used to:          │ Used to:                    │
+│  - Route users       │ - Track journey   │ - Recognize callers         │
+│  - Define menus      │ - Audit trail     │ - Personalize               │
+│  - Manage flow       │ - Analytics       │ - Calculate metrics         │
+│                       │                   │ - Find VIPs                 │
+│                                                                           │
+└───────────────────────────────────────────────────────────────────────┘
+
+╔════════════════════════════════════════════════════════════════════════════╗
+║                          CALL JOURNEY EXAMPLE                             ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+SCENARIO: Someone calls. They press "1" (Sales) then "1" (New Customer).
+
+STEP 1: Call comes in
+├─ Plivo generates: call_uuid = "abc123"
+├─ From: "+15551234567"
+└─ To: "+15559876543"
+
+STEP 2: Load MenuConfiguration
+├─ Query: menu_configurations WHERE menu_id = "main_menu"
+├─ Get: {
+│    "message": "Press 1 for Sales, 2 for Support",
+│    "digit_actions": {"1": "sales_menu", "2": "support_menu"},
+│    "timeout": 5
+│  }
+└─ Plivo says message to caller
+
+STEP 3: Caller presses "1"
+└─ Goes to next menu: "sales_menu"
+
+STEP 4: Load MenuConfiguration again
+├─ Query: menu_configurations WHERE menu_id = "sales_menu"
+├─ Get: {
+│    "message": "Press 1 for New Customers, 2 for Existing",
+│    "digit_actions": {"1": "sales_new_customer"}
+│  }
+└─ Plivo says message
+
+STEP 5: Caller presses "1" again
+└─ Navigates to "sales_new_customer" menu
+
+STEP 6: Call ends (caller hangs up)
+
+STEP 7: Save to CallLog
+└─ INSERT INTO call_logs VALUES (
+     call_uuid: "abc123",
+     from_number: "+15551234567",
+     start_time: "2026-01-29T10:00:00Z",
+     end_time: "2026-01-29T10:05:30Z",
+     duration: 330,
+     menu_path: ["main_menu", "sales_menu", "sales_new_customer"],
+     user_inputs: [{"digit": "1", "menu": "main"}, {"digit": "1", "menu": "sales"}],
+     call_status: "completed"
+   )
+
+STEP 8: Update CallerHistory
+├─ SELECT * FROM caller_history WHERE phone_number = "+15551234567"
+├─ If not exists: CREATE new row (total_calls = 1)
+├─ If exists: UPDATE
+│  ├─ total_calls = total_calls + 1 (now 2)
+│  ├─ total_duration = total_duration + 330 (now 630)
+│  └─ last_call_at = NOW
+└─ Now we know this caller has called 2 times before!
+
+STEP 9: Next time they call
+└─ We instantly recognize them from caller_history
+   (2nd time calling, VIP? Premium? etc.)
+
+╔════════════════════════════════════════════════════════════════════════════╗
+║                        REMEMBER: THE FLOW                                 ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+PERMANENT (PostgreSQL via Models):        TEMPORARY (Redis - coming next):
+├─ MenuConfiguration (menus)              └─ Session data (active call)
+├─ CallLog (each call details)              ├─ Current menu ID
+└─ CallerHistory (caller profiles)         ├─ Menu history
+                                            └─ User inputs so far
+
+When call ends:
+├─ Session data → CallLog (permanent)
+├─ Aggregate → CallerHistory (permanent)
+└─ Delete session → cleanup
+
+╔════════════════════════════════════════════════════════════════════════════╗
+║                           WHAT YOU NOW KNOW                               ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+✓ Three tables: MenuConfiguration, CallLog, CallerHistory
+✓ How they store different types of data
+✓ Why we need all three (flexibility, audit trail, quick lookup)
+✓ How they work together in a real call
+✓ How to query them (SQLAlchemy ORM)
+✓ Configuration-driven design (change menus without coding)
+
+✓✓✓ Foundation Complete! ✓✓✓
+
+Next: Redis Service (temporary session storage)
+Then: Plivo Service (XML generation)
+Then: IVR Service (orchestration)
+Then: Flask app (webhooks)
+Then: Testing & deployment!
+
+
+
