@@ -172,25 +172,54 @@ class IVRService:
         next_menu_id = menu.get_digit_option(digit)
         print(f"🎯 Next action: {next_menu_id}")
 
-        # Step 6: Generate response based on action type
-        if menu.action_type == "transfer":
+        # Step 6: Load the next menu to check its action type
+        if not next_menu_id:
+            print("⚠️  Warning: No next menu defined")
+            return plivo_service.generate_hangup_xml("Thank you for calling.")
+
+        next_menu = self._get_menu_config(next_menu_id)
+        if next_menu is None:
+            print(f"❌ Error: Next menu not found: {next_menu_id}")
+            return plivo_service.generate_hangup_xml("System error.")
+
+        # Step 7: Generate response based on NEXT menu's action type
+        if next_menu.action_type == "transfer":
             # Transfer to a phone number
             print("📞 Action: TRANSFER")
-            transfer_number = menu.action_config.get("transfer_number")
-            xml = plivo_service.generate_transfer_xml(transfer_number)
+            transfer_number = next_menu.action_config.get("transfer_number")
+            if not transfer_number:
+                print("❌ Error: No transfer number configured")
+                return plivo_service.generate_hangup_xml("Transfer configuration error.")
 
-        elif menu.action_type == "hangup":
+            # Get transfer timeout from config or use default
+            transfer_timeout = next_menu.action_config.get("timeout", 30)
+
+            # Update session with new menu before transferring
+            redis_service.set_current_menu(call_uuid, next_menu_id)
+            print(f"✓ Updated session to menu: {next_menu_id}")
+
+            # Generate transfer XML with optional message
+            if next_menu.message:
+                print(f"🎵 Speaking message before transfer: {next_menu.message[:50]}...")
+                xml = plivo_service.generate_transfer_xml(
+                    phone_number=transfer_number,
+                    timeout=transfer_timeout,
+                    message=next_menu.message
+                )
+            else:
+                xml = plivo_service.generate_transfer_xml(
+                    phone_number=transfer_number,
+                    timeout=transfer_timeout
+                )
+
+        elif next_menu.action_type == "hangup":
             # End the call
             print("📵 Action: HANGUP")
-            xml = plivo_service.generate_hangup_xml(menu.message)
+            xml = plivo_service.generate_hangup_xml(next_menu.message)
 
-        elif menu.action_type == "menu" or next_menu_id:
+        else:
             # Navigate to next menu (most common)
             print("🗂️  Action: NAVIGATE MENU")
-            next_menu = self._get_menu_config(next_menu_id)
-            if next_menu is None:
-                print(f"❌ Error: Next menu not found: {next_menu_id}")
-                return plivo_service.generate_hangup_xml("System error.")
 
             # Update session with new menu
             redis_service.set_current_menu(call_uuid, next_menu_id)
@@ -203,11 +232,6 @@ class IVRService:
                 max_digits=next_menu.max_digits,
                 action_url=f"{config.WEBHOOK_BASE_URL}/voice/input"
             )
-
-        else:
-            # Unknown action
-            print("⚠️  Warning: Unknown action type")
-            xml = plivo_service.generate_hangup_xml("Thank you for calling.")
 
         print(f"✓ Returning response XML")
         return xml

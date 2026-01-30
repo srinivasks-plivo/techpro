@@ -137,7 +137,7 @@ class PlivoXMLService:
         return xml
 
     @staticmethod
-    def generate_transfer_xml(phone_number, timeout=30):
+    def generate_transfer_xml(phone_number, timeout=30, message=None):
         """
         Generate XML to transfer the call to a phone number.
 
@@ -147,6 +147,7 @@ class PlivoXMLService:
         Args:
             phone_number (str): Where to transfer (e.g., "+15551234567")
             timeout (int): Seconds to ring before giving up
+            message (str): Optional message to speak before transferring
 
         Returns:
             str: XML response
@@ -154,22 +155,34 @@ class PlivoXMLService:
         Example:
             xml = plivo_service.generate_transfer_xml(
                 phone_number="+15551234567",
-                timeout=30
+                timeout=30,
+                message="Please hold while we transfer you to support."
             )
             # Returns:
             # <Response>
+            #   <Speak>Please hold while we transfer you to support.</Speak>
             #   <Dial timeout="30">
             #     <Number>+15551234567</Number>
             #   </Dial>
             # </Response>
         """
-        xml = (
-            '<Response>\n'
-            f'  <Dial timeout="{timeout}">\n'
-            f'    <Number>{phone_number}</Number>\n'
-            '  </Dial>\n'
-            '</Response>'
-        )
+        if message:
+            xml = (
+                '<Response>\n'
+                f'  <Speak>{PlivoXMLService._escape_xml(message)}</Speak>\n'
+                f'  <Dial timeout="{timeout}">\n'
+                f'    <Number>{phone_number}</Number>\n'
+                '  </Dial>\n'
+                '</Response>'
+            )
+        else:
+            xml = (
+                '<Response>\n'
+                f'  <Dial timeout="{timeout}">\n'
+                f'    <Number>{phone_number}</Number>\n'
+                '  </Dial>\n'
+                '</Response>'
+            )
 
         print(f"📞 Generated transfer XML to: {phone_number}")
         return xml
