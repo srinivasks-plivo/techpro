@@ -1,0 +1,27 @@
+# Day 2: Speech AI Dependencies
+
+# Deepgram SDK for Speech-to-Text
+deepgram-sdk>=3.0.0
+
+# ElevenLabs SDK for Text-to-Speech
+elevenlabs>=1.0.0
+
+# Audio handling
+sounddevice>=0.4.6
+numpy>=1.24.0
+scipy>=1.10.0
+
+# For playing audio
+pygame>=2.5.0
+
+# OpenAI (for Project 5 pipeline)
+openai>=1.0.0
+
+# HTTP client (used by project1, project3, project5)
+httpx>=0.24.0
+
+# Environment variables
+python-dotenv>=1.0.0
+
+# WebSocket for real-time streaming
+websockets>=12.0

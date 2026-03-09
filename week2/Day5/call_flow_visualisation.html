@@ -1,0 +1,787 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Call Flow Visualisation – Day 5 Projects 4 & 5</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      padding: 40px 24px;
+    }
+
+    h1 {
+      text-align: center;
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: #f8fafc;
+      margin-bottom: 8px;
+    }
+    .subtitle {
+      text-align: center;
+      font-size: 0.9rem;
+      color: #64748b;
+      margin-bottom: 48px;
+    }
+
+    /* ── Section headers ── */
+    .section-title {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 24px;
+      padding-left: 4px;
+      border-left: 3px solid #6366f1;
+      padding-left: 10px;
+    }
+
+    .project-block {
+      max-width: 960px;
+      margin: 0 auto 64px;
+    }
+
+    /* ── Flow row ── */
+    .flow {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0;
+      margin-bottom: 36px;
+    }
+
+    .node {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+
+    .box {
+      border-radius: 10px;
+      padding: 10px 16px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      text-align: center;
+      min-width: 96px;
+      line-height: 1.3;
+      position: relative;
+    }
+    .box-label {
+      font-size: 0.65rem;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      text-align: center;
+    }
+
+    /* Colour themes */
+    .c-phone   { background: #1e3a5f; border: 1.5px solid #3b82f6; color: #93c5fd; }
+    .c-plivo   { background: #1a2e1a; border: 1.5px solid #22c55e; color: #86efac; }
+    .c-sip     { background: #2a1a3a; border: 1.5px solid #a855f7; color: #d8b4fe; }
+    .c-livekit { background: #1e2a3a; border: 1.5px solid #38bdf8; color: #7dd3fc; }
+    .c-agent   { background: #2a1e1e; border: 1.5px solid #f87171; color: #fca5a5; }
+    .c-vad     { background: #2a2a1e; border: 1.5px solid #facc15; color: #fde68a; }
+    .c-stt     { background: #1e2a2a; border: 1.5px solid #34d399; color: #6ee7b7; }
+    .c-llm     { background: #1e1e2a; border: 1.5px solid #818cf8; color: #c7d2fe; }
+    .c-tts     { background: #2a1a2a; border: 1.5px solid #e879f9; color: #f0abfc; }
+    .c-db      { background: #2a1e14; border: 1.5px solid #fb923c; color: #fed7aa; }
+    .c-tool    { background: #142a1e; border: 1.5px solid #4ade80; color: #bbf7d0; }
+
+    /* Arrows */
+    .arrow {
+      display: flex;
+      align-items: center;
+      flex-direction: column;
+      gap: 2px;
+      padding: 0 6px;
+      flex-shrink: 0;
+    }
+    .arrow-line {
+      width: 36px;
+      height: 2px;
+      background: #334155;
+      position: relative;
+    }
+    .arrow-line::after {
+      content: '';
+      position: absolute;
+      right: -1px;
+      top: -4px;
+      border-top: 5px solid transparent;
+      border-bottom: 5px solid transparent;
+      border-left: 8px solid #334155;
+    }
+    .arrow-label {
+      font-size: 0.6rem;
+      color: #475569;
+      white-space: nowrap;
+    }
+
+    /* ── Pipeline row (STT → LLM → TTS) ── */
+    .pipeline {
+      display: flex;
+      align-items: center;
+      background: #131820;
+      border: 1px solid #1e293b;
+      border-radius: 12px;
+      padding: 16px 20px;
+      gap: 0;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+      row-gap: 16px;
+    }
+    .pipeline-title {
+      width: 100%;
+      font-size: 0.7rem;
+      color: #475569;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      margin-bottom: 8px;
+    }
+
+    /* ── Intent grid (Project 5) ── */
+    .intent-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    .intent-card {
+      background: #131820;
+      border: 1px solid #1e293b;
+      border-radius: 10px;
+      padding: 14px 16px;
+    }
+    .intent-card-title {
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 8px;
+    }
+    .intent-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.76rem;
+      color: #cbd5e1;
+      margin-bottom: 5px;
+    }
+    .intent-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    /* ── Lifecycle timeline ── */
+    .lifecycle {
+      background: #131820;
+      border: 1px solid #1e293b;
+      border-radius: 12px;
+      padding: 20px 24px;
+      margin-bottom: 24px;
+    }
+    .lifecycle-title {
+      font-size: 0.7rem;
+      color: #475569;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      margin-bottom: 16px;
+    }
+    .lc-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      margin-bottom: 12px;
+      position: relative;
+    }
+    .lc-row:not(:last-child)::before {
+      content: '';
+      position: absolute;
+      left: 13px;
+      top: 26px;
+      width: 2px;
+      height: calc(100% + 0px);
+      background: #1e293b;
+    }
+    .lc-num {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: #1e293b;
+      border: 1.5px solid #334155;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.7rem;
+      font-weight: 700;
+      color: #94a3b8;
+      flex-shrink: 0;
+      z-index: 1;
+    }
+    .lc-content { flex: 1; }
+    .lc-event {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: #e2e8f0;
+    }
+    .lc-detail {
+      font-size: 0.72rem;
+      color: #64748b;
+      margin-top: 2px;
+    }
+
+    /* ── DB schema box ── */
+    .db-schema {
+      background: #131820;
+      border: 1px solid #fb923c44;
+      border-radius: 12px;
+      padding: 18px 20px;
+    }
+    .db-schema-title {
+      font-size: 0.7rem;
+      color: #fb923c;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      margin-bottom: 12px;
+    }
+    .db-field {
+      display: flex;
+      gap: 12px;
+      font-size: 0.74rem;
+      margin-bottom: 5px;
+      align-items: baseline;
+    }
+    .db-field-name { color: #fed7aa; font-weight: 600; min-width: 140px; }
+    .db-field-type { color: #64748b; }
+
+    /* ── Comparison table ── */
+    .compare-table {
+      max-width: 960px;
+      margin: 0 auto;
+      background: #131820;
+      border: 1px solid #1e293b;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    table { width: 100%; border-collapse: collapse; }
+    th {
+      background: #1e293b;
+      padding: 10px 16px;
+      font-size: 0.75rem;
+      color: #94a3b8;
+      text-align: left;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    td {
+      padding: 10px 16px;
+      font-size: 0.78rem;
+      color: #cbd5e1;
+      border-top: 1px solid #1e293b;
+      vertical-align: top;
+    }
+    tr:hover td { background: #0f1822; }
+    .yes { color: #4ade80; }
+    .no  { color: #f87171; }
+
+    hr.divider {
+      max-width: 960px;
+      margin: 0 auto 48px;
+      border: none;
+      border-top: 1px solid #1e293b;
+    }
+  </style>
+</head>
+<body>
+
+<h1>Call Flow Visualisation</h1>
+<p class="subtitle">Week 2 · Day 5 · Project 4 (Phone Agent) &amp; Project 5 (AI Receptionist)</p>
+
+<!-- ═══════════════════════════════════════════════════
+     PROJECT 4
+═══════════════════════════════════════════════════ -->
+<div class="project-block">
+  <div class="section-title">Project 4 — Phone to LiveKit Agent</div>
+
+  <!-- Inbound path -->
+  <div class="pipeline">
+    <div class="pipeline-title">Inbound Call Path</div>
+
+    <div class="node">
+      <div class="box c-phone">📞 Caller</div>
+      <div class="box-label">PSTN</div>
+    </div>
+    <div class="arrow">
+      <div class="arrow-line"></div>
+      <div class="arrow-label">phone call</div>
+    </div>
+    <div class="node">
+      <div class="box c-plivo">Plivo</div>
+      <div class="box-label">Carrier / SIP Trunk</div>
+    </div>
+    <div class="arrow">
+      <div class="arrow-line"></div>
+      <div class="arrow-label">SIP INVITE</div>
+    </div>
+    <div class="node">
+      <div class="box c-sip">SIP Dispatch</div>
+      <div class="box-label">agent_name routing</div>
+    </div>
+    <div class="arrow">
+      <div class="arrow-line"></div>
+      <div class="arrow-label">creates room</div>
+    </div>
+    <div class="node">
+      <div class="box c-livekit">LiveKit</div>
+      <div class="box-label">RTC Server</div>
+    </div>
+    <div class="arrow">
+      <div class="arrow-line"></div>
+      <div class="arrow-label">JobContext</div>
+    </div>
+    <div class="node">
+      <div class="box c-agent">PhoneAgent</div>
+      <div class="box-label">receptionist-agent</div>
+    </div>
+  </div>
+
+  <!-- AI pipeline -->
+  <div class="pipeline">
+    <div class="pipeline-title">Voice AI Processing Pipeline</div>
+
+    <div class="node">
+      <div class="box c-phone" style="min-width:80px">🎤 Audio</div>
+      <div class="box-label">caller speech</div>
+    </div>
+    <div class="arrow">
+      <div class="arrow-line"></div>
+      <div class="arrow-label">raw audio</div>
+    </div>
+    <div class="node">
+      <div class="box c-vad">Silero VAD</div>
+      <div class="box-label">voice activity</div>
+    </div>
+    <div class="arrow">
+      <div class="arrow-line"></div>
+      <div class="arrow-label">speech frames</div>
+    </div>
+    <div class="node">
+      <div class="box c-stt">Deepgram<br/>nova-3</div>
+      <div class="box-label">STT</div>
+    </div>
+    <div class="arrow">
+      <div class="arrow-line"></div>
+      <div class="arrow-label">transcript</div>
+    </div>
+    <div class="node">
+      <div class="box c-llm">GPT-4.1-mini</div>
+      <div class="box-label">LLM</div>
+    </div>
+    <div class="arrow">
+      <div class="arrow-line"></div>
+      <div class="arrow-label">text reply</div>
+    </div>
+    <div class="node">
+      <div class="box c-tts">ElevenLabs</div>
+      <div class="box-label">TTS</div>
+    </div>
+    <div class="arrow">
+      <div class="arrow-line"></div>
+      <div class="arrow-label">audio stream</div>
+    </div>
+    <div class="node">
+      <div class="box c-phone" style="min-width:80px">🔊 Output</div>
+      <div class="box-label">to caller</div>
+    </div>
+  </div>
+
+  <!-- Lifecycle -->
+  <div class="lifecycle">
+    <div class="lifecycle-title">Session Lifecycle — Project 4</div>
+    <div class="lc-row">
+      <div class="lc-num">1</div>
+      <div class="lc-content">
+        <div class="lc-event">Process Prewarm</div>
+        <div class="lc-detail">Silero VAD model loaded into proc.userdata["vad"] before first call</div>
+      </div>
+    </div>
+    <div class="lc-row">
+      <div class="lc-num">2</div>
+      <div class="lc-content">
+        <div class="lc-event">SIP INVITE → Room Created</div>
+        <div class="lc-detail">Plivo dials in; SIP dispatch rule routes to agent_name="receptionist-agent"</div>
+      </div>
+    </div>
+    <div class="lc-row">
+      <div class="lc-num">3</div>
+      <div class="lc-content">
+        <div class="lc-event">entrypoint() called</div>
+        <div class="lc-detail">AgentSession constructed with VAD · STT · LLM · TTS · MultilingualModel turn detector</div>
+      </div>
+    </div>
+    <div class="lc-row">
+      <div class="lc-num">4</div>
+      <div class="lc-content">
+        <div class="lc-event">PhoneAgent.on_enter()</div>
+        <div class="lc-detail">Logs remote participant metadata (caller identity/number); generates greeting reply</div>
+      </div>
+    </div>
+    <div class="lc-row">
+      <div class="lc-num">5</div>
+      <div class="lc-content">
+        <div class="lc-event">Conversation Loop</div>
+        <div class="lc-detail">Interruptions allowed · min_endpointing=0.5s · max_endpointing=3.0s · preemptive generation on</div>
+      </div>
+    </div>
+    <div class="lc-row">
+      <div class="lc-num">6</div>
+      <div class="lc-content">
+        <div class="lc-event">get_current_time() (function tool)</div>
+        <div class="lc-detail">LLM calls tool when caller asks for time; returns formatted datetime string</div>
+      </div>
+    </div>
+    <div class="lc-row">
+      <div class="lc-num">7</div>
+      <div class="lc-content">
+        <div class="lc-event">Call Ends → Shutdown Callback</div>
+        <div class="lc-detail">UsageCollector logs STT/LLM/TTS token/character usage summary</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<hr class="divider" />
+
+<!-- ═══════════════════════════════════════════════════
+     PROJECT 5
+═══════════════════════════════════════════════════ -->
+<div class="project-block">
+  <div class="section-title">Project 5 — AI Receptionist (Acme Corp)</div>
+
+  <!-- Inbound path – same infra, adds DB -->
+  <div class="pipeline">
+    <div class="pipeline-title">Inbound Call Path (same SIP stack + call logging)</div>
+
+    <div class="node">
+      <div class="box c-phone">📞 Caller</div>
+      <div class="box-label">PSTN</div>
+    </div>
+    <div class="arrow">
+      <div class="arrow-line"></div>
+      <div class="arrow-label">phone call</div>
+    </div>
+    <div class="node">
+      <div class="box c-plivo">Plivo</div>
+      <div class="box-label">Carrier / SIP Trunk</div>
+    </div>
+    <div class="arrow">
+      <div class="arrow-line"></div>
+      <div class="arrow-label">SIP INVITE</div>
+    </div>
+    <div class="node">
+      <div class="box c-sip">SIP Dispatch</div>
+      <div class="box-label">agent_name routing</div>
+    </div>
+    <div class="arrow">
+      <div class="arrow-line"></div>
+      <div class="arrow-label">creates room</div>
+    </div>
+    <div class="node">
+      <div class="box c-livekit">LiveKit</div>
+      <div class="box-label">RTC Server</div>
+    </div>
+    <div class="arrow">
+      <div class="arrow-line"></div>
+      <div class="arrow-label">JobContext</div>
+    </div>
+    <div class="node">
+      <div class="box c-agent">Receptionist<br/>Agent</div>
+      <div class="box-label">receptionist-agent</div>
+    </div>
+    <div class="arrow">
+      <div class="arrow-line"></div>
+      <div class="arrow-label">start_call()</div>
+    </div>
+    <div class="node">
+      <div class="box c-db">SQLite DB</div>
+      <div class="box-label">call_logger</div>
+    </div>
+  </div>
+
+  <!-- AI pipeline (same) -->
+  <div class="pipeline">
+    <div class="pipeline-title">Voice AI Processing Pipeline (identical to Project 4)</div>
+
+    <div class="node">
+      <div class="box c-phone" style="min-width:80px">🎤 Audio</div>
+      <div class="box-label">caller speech</div>
+    </div>
+    <div class="arrow"><div class="arrow-line"></div></div>
+    <div class="node">
+      <div class="box c-vad">Silero VAD</div>
+      <div class="box-label">speech detection</div>
+    </div>
+    <div class="arrow"><div class="arrow-line"></div></div>
+    <div class="node">
+      <div class="box c-stt">Deepgram<br/>nova-3</div>
+      <div class="box-label">STT</div>
+    </div>
+    <div class="arrow">
+      <div class="arrow-line"></div>
+      <div class="arrow-label">+ transcript log</div>
+    </div>
+    <div class="node">
+      <div class="box c-llm">GPT-4.1-mini</div>
+      <div class="box-label">LLM</div>
+    </div>
+    <div class="arrow">
+      <div class="arrow-line"></div>
+      <div class="arrow-label">+ agent log</div>
+    </div>
+    <div class="node">
+      <div class="box c-tts">ElevenLabs</div>
+      <div class="box-label">TTS</div>
+    </div>
+    <div class="arrow"><div class="arrow-line"></div></div>
+    <div class="node">
+      <div class="box c-phone" style="min-width:80px">🔊 Output</div>
+      <div class="box-label">to caller</div>
+    </div>
+  </div>
+
+  <!-- Intent detection -->
+  <div class="intent-grid">
+    <div class="intent-card">
+      <div class="intent-card-title">Intent Detection (Function Tools)</div>
+      <div class="intent-item">
+        <div class="intent-dot" style="background:#34d399"></div>
+        get_business_hours() → <em style="color:#64748b;margin-left:4px">hours_inquiry</em>
+      </div>
+      <div class="intent-item">
+        <div class="intent-dot" style="background:#38bdf8"></div>
+        get_location() → <em style="color:#64748b;margin-left:4px">location_inquiry</em>
+      </div>
+      <div class="intent-item">
+        <div class="intent-dot" style="background:#818cf8"></div>
+        transfer_to_sales() → <em style="color:#64748b;margin-left:4px">sales_transfer</em>
+      </div>
+      <div class="intent-item">
+        <div class="intent-dot" style="background:#f87171"></div>
+        transfer_to_support() → <em style="color:#64748b;margin-left:4px">support_transfer</em>
+      </div>
+    </div>
+
+    <div class="intent-card">
+      <div class="intent-card-title">Tool Response Details</div>
+      <div class="intent-item">
+        <div class="intent-dot" style="background:#34d399"></div>
+        Hours: Mon–Fri 9AM–5PM PT
+      </div>
+      <div class="intent-item">
+        <div class="intent-dot" style="background:#38bdf8"></div>
+        Address: 123 Main St, SF CA
+      </div>
+      <div class="intent-item">
+        <div class="intent-dot" style="background:#818cf8"></div>
+        Sales: connects &amp; hands off
+      </div>
+      <div class="intent-item">
+        <div class="intent-dot" style="background:#f87171"></div>
+        Support: connects &amp; asks issue
+      </div>
+    </div>
+
+    <div class="intent-card">
+      <div class="intent-card-title">Transcript Events</div>
+      <div class="intent-item">
+        <div class="intent-dot" style="background:#facc15"></div>
+        user_input_transcribed → user row
+      </div>
+      <div class="intent-item">
+        <div class="intent-dot" style="background:#e879f9"></div>
+        agent_speech_committed → assistant row
+      </div>
+      <div class="intent-item">
+        <div class="intent-dot" style="background:#fb923c"></div>
+        on_shutdown → complete_call()
+      </div>
+    </div>
+  </div>
+
+  <!-- Lifecycle -->
+  <div class="lifecycle">
+    <div class="lifecycle-title">Session Lifecycle — Project 5</div>
+    <div class="lc-row">
+      <div class="lc-num">1</div>
+      <div class="lc-content">
+        <div class="lc-event">Process Prewarm</div>
+        <div class="lc-detail">Silero VAD model loaded; CallLogger initialises SQLite (receptionist_calls.db)</div>
+      </div>
+    </div>
+    <div class="lc-row">
+      <div class="lc-num">2</div>
+      <div class="lc-content">
+        <div class="lc-event">SIP INVITE → Room Created</div>
+        <div class="lc-detail">Plivo → SIP dispatch → agent_name="receptionist-agent" → entrypoint()</div>
+      </div>
+    </div>
+    <div class="lc-row">
+      <div class="lc-num">3</div>
+      <div class="lc-content">
+        <div class="lc-event">ReceptionistAgent(room=ctx.room) created</div>
+        <div class="lc-detail">AgentSession with same VAD · STT · LLM · TTS stack; transcript + speech event listeners attached</div>
+      </div>
+    </div>
+    <div class="lc-row">
+      <div class="lc-num">4</div>
+      <div class="lc-content">
+        <div class="lc-event">on_enter() → call_logger.start_call()</div>
+        <div class="lc-detail">Extracts caller identity from room participants; inserts row into calls table; generates warm greeting</div>
+      </div>
+    </div>
+    <div class="lc-row">
+      <div class="lc-num">5</div>
+      <div class="lc-content">
+        <div class="lc-event">Conversation Loop + Intent Detection</div>
+        <div class="lc-detail">LLM routes to one of 4 function tools based on caller intent; each tool logs detected intent to DB</div>
+      </div>
+    </div>
+    <div class="lc-row">
+      <div class="lc-num">6</div>
+      <div class="lc-content">
+        <div class="lc-event">Real-time Transcript Logging</div>
+        <div class="lc-detail">user_input_transcribed &amp; agent_speech_committed events append JSON rows to calls.transcript</div>
+      </div>
+    </div>
+    <div class="lc-row">
+      <div class="lc-num">7</div>
+      <div class="lc-content">
+        <div class="lc-event">Call Ends → on_shutdown()</div>
+        <div class="lc-detail">UsageCollector summary logged; call_logger.complete_call() sets end_time, duration, status="completed"</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DB schema -->
+  <div class="db-schema">
+    <div class="db-schema-title">SQLite Schema — calls table (call_logger.py)</div>
+    <div class="db-field"><span class="db-field-name">id</span><span class="db-field-type">INTEGER PRIMARY KEY AUTOINCREMENT</span></div>
+    <div class="db-field"><span class="db-field-name">caller_number</span><span class="db-field-type">TEXT DEFAULT 'unknown' — phone identity or PSTN number</span></div>
+    <div class="db-field"><span class="db-field-name">room_name</span><span class="db-field-type">TEXT NOT NULL — LiveKit room name</span></div>
+    <div class="db-field"><span class="db-field-name">start_time</span><span class="db-field-type">TEXT — ISO 8601 UTC timestamp</span></div>
+    <div class="db-field"><span class="db-field-name">end_time</span><span class="db-field-type">TEXT — set on complete_call()</span></div>
+    <div class="db-field"><span class="db-field-name">duration_seconds</span><span class="db-field-type">REAL — computed on completion</span></div>
+    <div class="db-field"><span class="db-field-name">transcript</span><span class="db-field-type">TEXT — JSON array of {role, text, timestamp}</span></div>
+    <div class="db-field"><span class="db-field-name">detected_intents</span><span class="db-field-type">TEXT — JSON array of intent strings</span></div>
+    <div class="db-field"><span class="db-field-name">summary</span><span class="db-field-type">TEXT — usage summary string</span></div>
+    <div class="db-field"><span class="db-field-name">status</span><span class="db-field-type">TEXT — 'active' | 'completed'</span></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════
+     COMPARISON TABLE
+═══════════════════════════════════════════════════ -->
+<div class="project-block" style="margin-bottom: 24px">
+  <div class="section-title">Project 4 vs Project 5 — Feature Comparison</div>
+  <div class="compare-table">
+    <table>
+      <thead>
+        <tr>
+          <th>Feature</th>
+          <th>Project 4 — Phone Agent</th>
+          <th>Project 5 — AI Receptionist</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>SIP / Plivo integration</td>
+          <td class="yes">✓</td>
+          <td class="yes">✓</td>
+        </tr>
+        <tr>
+          <td>LiveKit AgentSession</td>
+          <td class="yes">✓</td>
+          <td class="yes">✓</td>
+        </tr>
+        <tr>
+          <td>STT (Deepgram nova-3)</td>
+          <td class="yes">✓</td>
+          <td class="yes">✓</td>
+        </tr>
+        <tr>
+          <td>LLM (GPT-4.1-mini)</td>
+          <td class="yes">✓</td>
+          <td class="yes">✓</td>
+        </tr>
+        <tr>
+          <td>TTS (ElevenLabs)</td>
+          <td class="yes">✓</td>
+          <td class="yes">✓</td>
+        </tr>
+        <tr>
+          <td>Silero VAD (prewarm)</td>
+          <td class="yes">✓</td>
+          <td class="yes">✓</td>
+        </tr>
+        <tr>
+          <td>Multilingual turn detection</td>
+          <td class="yes">✓</td>
+          <td class="yes">✓</td>
+        </tr>
+        <tr>
+          <td>Metrics / UsageCollector</td>
+          <td class="yes">✓</td>
+          <td class="yes">✓</td>
+        </tr>
+        <tr>
+          <td>Function tools</td>
+          <td>get_current_time (1 tool)</td>
+          <td>4 tools: hours, location, sales, support</td>
+        </tr>
+        <tr>
+          <td>Intent detection &amp; logging</td>
+          <td class="no">✗</td>
+          <td class="yes">✓ (4 intents → DB)</td>
+        </tr>
+        <tr>
+          <td>Real-time transcript logging</td>
+          <td class="no">✗</td>
+          <td class="yes">✓ (user + agent turns)</td>
+        </tr>
+        <tr>
+          <td>Persistent call DB (SQLite)</td>
+          <td class="no">✗</td>
+          <td class="yes">✓ calls table</td>
+        </tr>
+        <tr>
+          <td>Caller identity extraction</td>
+          <td>Logs only (no DB)</td>
+          <td class="yes">✓ stored as caller_number</td>
+        </tr>
+        <tr>
+          <td>Graceful call completion</td>
+          <td>Usage log only</td>
+          <td class="yes">✓ complete_call() + duration</td>
+        </tr>
+        <tr>
+          <td>Business persona / persona prompt</td>
+          <td>Generic assistant</td>
+          <td>Acme Corp Receptionist</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,11 @@
+# LiveKit Agents framework with all plugins
+livekit-agents[openai,silero,deepgram,elevenlabs,turn-detector]~=1.0
+
+# LiveKit Server API (token generation, SIP configuration)
+livekit-api>=1.0.0
+
+# Environment variables
+python-dotenv>=1.0.0
+
+# Health check endpoint for deployment
+aiohttp>=3.9.0

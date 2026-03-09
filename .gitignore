@@ -1,0 +1,32 @@
+# Environment & credentials
+.env
+.env.local
+.env.production
+*.pem
+*.key
+*.secret
+
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.db
+*.sqlite
+
+# Node
+node_modules/
+package-lock.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# ivr-vercel (separate repo)
+ivr-vercel/
+
+# Claude
+.claude/

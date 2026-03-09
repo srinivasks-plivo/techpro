@@ -1,0 +1,27 @@
+# Day 4: Pipecat + Plivo Integration Dependencies
+
+# Pipecat with required service integrations
+pipecat-ai[silero,deepgram,openai,elevenlabs,plivo]>=0.0.60
+
+# FastAPI and server
+fastapi>=0.110.0
+uvicorn[standard]>=0.27.0
+
+# Flask (for Project 1 basic server)
+flask>=3.0.0
+
+# WebSocket support
+websockets>=12.0
+
+# Plivo SDK (for API calls like hangup)
+plivo>=4.50.0
+
+# PostgreSQL (for call logging)
+psycopg2-binary>=2.9.9
+asyncpg>=0.29.0
+
+# Environment variables
+python-dotenv>=1.0.0
+
+# Logging
+loguru>=0.7.0

@@ -1,0 +1,33 @@
+# Week 2: Unified Dependencies
+# Combines Day2 (Speech AI), Day3 (Pipecat), Day4 (Pipecat+Plivo), Day5 (LiveKit)
+
+# --- Day 2: Speech AI ---
+deepgram-sdk>=3.0.0
+elevenlabs>=1.0.0
+sounddevice>=0.4.6
+numpy>=1.24.0
+scipy>=1.10.0
+pygame>=2.5.0
+openai>=1.0.0
+httpx>=0.24.0
+websockets>=12.0
+
+# --- Day 3 & 4: Pipecat Framework ---
+pipecat-ai[local,silero,deepgram,openai,elevenlabs,plivo,local-smart-turn-v3]>=0.0.60
+
+# --- Day 4: Server & Plivo ---
+fastapi>=0.110.0
+uvicorn[standard]>=0.27.0
+flask>=3.0.0
+plivo>=4.50.0
+psycopg2-binary>=2.9.9
+asyncpg>=0.29.0
+
+# --- Day 5: LiveKit ---
+livekit-agents[openai,silero,deepgram,elevenlabs,turn-detector]~=1.0
+livekit-api>=1.0.0
+aiohttp>=3.9.0
+
+# --- Shared ---
+python-dotenv>=1.0.0
+loguru>=0.7.0

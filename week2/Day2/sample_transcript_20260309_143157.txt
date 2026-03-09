@@ -1,0 +1,50 @@
+============================================================
+TRANSCRIPT
+============================================================
+
+FULL TRANSCRIPT:
+----------------------------------------
+Hello. This is a test of the Deepgram speech to text API. Today, we are learning about audio transcription and voice AI. The weather is sunny, and I hope you are having a great day.
+
+WORD TIMESTAMPS:
+----------------------------------------
+[0.24s - 0.74s] hello
+[0.80s - 0.96s] this
+[0.96s - 1.12s] is
+[1.12s - 1.28s] a
+[1.28s - 1.52s] test
+[1.52s - 1.68s] of
+[1.68s - 1.92s] the
+[1.92s - 2.42s] deepgram
+[2.56s - 2.88s] speech
+[2.88s - 3.12s] to
+[3.12s - 3.44s] text
+[3.44s - 3.94s] api
+[4.16s - 4.56s] today
+[4.56s - 4.72s] we
+[4.72s - 4.88s] are
+[4.88s - 5.28s] learning
+[5.28s - 5.68s] about
+[5.68s - 6.18s] audio
+[6.24s - 6.74s] transcription
+[6.96s - 7.20s] and
+[7.20s - 7.52s] voice
+[7.52s - 8.00s] ai
+[8.00s - 8.24s] the
+[8.24s - 8.56s] weather
+[8.56s - 8.80s] is
+[8.80s - 9.20s] sunny
+[9.20s - 9.36s] and
+[9.36s - 9.52s] i
+[9.52s - 9.84s] hope
+[9.84s - 10.00s] you
+[10.00s - 10.24s] are
+[10.24s - 10.64s] having
+[10.64s - 10.72s] a
+[10.72s - 10.96s] great
+[10.96s - 11.28s] day
+
+METADATA:
+----------------------------------------
+Duration: 11.28 seconds
+Channels: 1
