@@ -1,6 +1,5 @@
-# Tech Ramp-Up Program
+# Exploring Voice Agents with Plivo
 
-A 2-week hands-on program building production voice AI systems — from raw API calls to a deployed AI receptionist handling real phone calls 24/7.
 
 ## Architecture
 
