@@ -1,5 +1,5 @@
 # LiveKit Agents framework with all plugins
-livekit-agents[openai,silero,deepgram,elevenlabs,turn-detector]~=1.0
+livekit-agents[openai,silero,deepgram,elevenlabs,turn-detector]~=1.4.0
 
 # LiveKit Server API (token generation, SIP configuration)
 livekit-api>=1.0.0

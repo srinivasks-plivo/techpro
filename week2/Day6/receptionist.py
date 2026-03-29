@@ -1,31 +1,18 @@
 """
-Project 4: Improved AI Receptionist with Better Conversation Quality
+Day 6: Pipecat AI Receptionist — Railway Deployment
+====================================================
+Deployed version of the improved AI receptionist (Day 4 Project 4).
+No PyTorch needed — Pipecat uses onnxruntime for Silero VAD.
 
-Enhancements over Project 3:
-- Better interruption handling: Stops TTS immediately when caller speaks
-- Conversation context: Remembers what was discussed earlier in the call
-- Graceful ending: "Is there anything else I can help you with?" -> "Thank you for calling. Goodbye!"
-- Error recovery: If STT fails, says "I'm having trouble hearing you, could you repeat that?"
-
-Usage:
-    1. pip install -r requirements.txt
-    2. Set up Vercel Postgres and add POSTGRES_URL to .env
-    3. python project4_improved_receptionist.py
-    4. Start ngrok: ngrok http 8765
-    5. Configure Plivo Answer URL to: https://your-ngrok-url/ (GET)
-    6. Test: interruptions, context follow-ups, graceful ending, error recovery
+Usage (local):  python receptionist.py
+Usage (deploy): railway up
 """
 
-import asyncio
-import json
 import os
 import time
 from datetime import datetime, timezone
-from pathlib import Path
 
-import asyncpg
 import uvicorn
-from dotenv import load_dotenv
 from fastapi import FastAPI, Query, Request, WebSocket
 from fastapi.responses import Response as FastAPIResponse
 from loguru import logger
@@ -33,12 +20,8 @@ from pipecat.adapters.schemas.function_schema import FunctionSchema
 from pipecat.adapters.schemas.tools_schema import ToolsSchema
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
-from pipecat.frames.frames import (
-    LLMRunFrame,
-    TTSSpeakFrame,
-    UserStartedSpeakingFrame,
-    UserStoppedSpeakingFrame,
-)
+from pipecat.frames.frames import Frame, TextFrame, TranscriptionFrame, TTSSpeakFrame
+from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
@@ -58,14 +41,29 @@ from pipecat.transports.websocket.fastapi import (
     FastAPIWebsocketTransport,
 )
 
-load_dotenv(Path(__file__).resolve().parent.parent / ".env", override=True)
+app = FastAPI(title="Acme Corp AI Receptionist")
 
-app = FastAPI(
-    title="Improved AI Receptionist",
-    description="Acme Corp receptionist with enhanced conversation quality",
-)
+# Railway sets PORT automatically; fallback to SERVER_PORT or 8765
+SERVER_PORT = int(os.getenv("PORT", os.getenv("SERVER_PORT", 8765)))
 
-SERVER_PORT = int(os.getenv("SERVER_PORT", 8765))
+# Store caller info from /answer so WebSocket handler can access it
+_pending_calls = {}
+
+
+class TranscriptProcessor(FrameProcessor):
+    """Captures user (STT) and bot (TTS) text for logging."""
+
+    def __init__(self, call_logger):
+        super().__init__()
+        self._call_logger = call_logger
+
+    async def process_frame(self, frame: Frame, direction: FrameDirection):
+        await super().process_frame(frame, direction)
+        if isinstance(frame, TranscriptionFrame) and frame.text.strip():
+            self._call_logger.add_transcript("user", frame.text.strip())
+        elif isinstance(frame, TextFrame) and frame.text.strip():
+            self._call_logger.add_transcript("assistant", frame.text.strip())
+        await self.push_frame(frame, direction)
 
 # ---------------------------------------------------------------------------
 # WARM-START: Pre-initialize expensive resources at server startup
@@ -89,27 +87,34 @@ _warm_tts = ElevenLabsTTSService(
 )
 logger.info("Warm-start: AI services (LLM, STT, TTS) pre-initialized")
 
-IMPROVED_SYSTEM_PROMPT = """You are a friendly, natural-sounding receptionist for Acme Corp. You are speaking on a phone call.
+IMPROVED_SYSTEM_PROMPT = """You are a friendly, natural-sounding receptionist for Plivo Inc. You are speaking on a phone call.
+
+ABOUT PLIVO:
+Plivo is a cloud communications platform that enables businesses to make and receive voice calls and SMS messages globally.
+Products include: Voice API, SMS API, SIP Trunking, Phone Number Management, and Contact Center solutions.
+Plivo serves over 50,000 businesses worldwide including IBM, Netflix, and MercadoLibre.
 
 IMPORTANT CONVERSATION RULES:
 - Keep responses brief and conversational - one to two sentences max.
 - Do NOT use special characters, markdown, bullet points, or formatting. Speak naturally as a human would on the phone.
-- Remember what the caller has already asked about during this call. If they ask a follow-up like "what about weekends?" after asking about hours, connect it to the previous topic.
+- Remember what the caller has already asked about during this call. If they ask a follow-up, connect it to the previous topic.
 - After helping with a request, always ask: "Is there anything else I can help you with?"
-- When the caller says goodbye, they're done, or "that's all", respond with: "Thank you for calling Acme Corp. Have a great day. Goodbye!"
+- When the caller says goodbye, they're done, or "that's all", respond with: "Thank you for calling Plivo. Have a great day. Goodbye!"
 - If you cannot understand what the caller said, say: "I'm sorry, I'm having a bit of trouble hearing you. Could you please repeat that?"
 
 HANDLING REQUESTS:
-1. Greet new callers: "Hello, thank you for calling Acme Corp. How can I help you today?"
+1. Greet new callers: "Hello, thank you for calling Plivo. How can I help you today?"
 2. Sales inquiries: Use transfer_to_sales function. Say "I'll connect you to our sales team. One moment please."
-3. Support inquiries: Use transfer_to_support function. Say "I'll connect you to support. Can you briefly describe your issue?"
+3. Support inquiries: Use transfer_to_support function. Say "I'll connect you to our support team. Can you briefly describe your issue?"
 4. Hours questions: Use get_business_hours function and relay naturally.
 5. Location questions: Use get_location function and relay naturally.
-6. Unclear requests: "I'm sorry, could you repeat that?"
+6. Product questions: Plivo offers Voice API for programmable calls, SMS API for messaging, SIP Trunking for connecting existing phone systems, and Contact Center for building customer support solutions. For pricing details, offer to connect them to sales.
+7. Unclear requests: "I'm sorry, could you repeat that?"
 
 CONTEXT AWARENESS:
-- If someone asks about hours then asks "what about weekends?", you should answer about weekend hours.
-- If someone asks about location then asks "how do I get there?", give directions context.
+- If someone asks about products then asks "how much does it cost?", offer to connect them to sales for pricing details.
+- If someone asks about hours then asks "what about weekends?", answer about weekend support hours.
+- If someone asks about location then asks "do you have other offices?", mention the other offices.
 - Track the conversation flow and provide contextually relevant responses."""
 
 TOOLS = [
@@ -164,6 +169,7 @@ class CallLogger:
             logger.warning("POSTGRES_URL not set - call logging disabled")
             return False
         try:
+            import asyncpg
             self.pool = await asyncpg.create_pool(postgres_url, min_size=1, max_size=3)
             await self._create_table()
             logger.info("Connected to Vercel Postgres")
@@ -174,20 +180,31 @@ class CallLogger:
 
     async def _create_table(self):
         async with self.pool.acquire() as conn:
+            # Add new columns if table already exists, or create fresh
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS call_logs (
                     id SERIAL PRIMARY KEY,
                     caller_number VARCHAR(50),
+                    to_number VARCHAR(50) DEFAULT 'unknown',
+                    call_uuid VARCHAR(100) DEFAULT '',
                     transcript TEXT,
                     detected_intent VARCHAR(100),
                     duration_seconds FLOAT,
                     timestamp TIMESTAMPTZ DEFAULT NOW()
                 )
             """)
+            # Add columns if they don't exist (for existing tables)
+            for col, typ in [("to_number", "VARCHAR(50) DEFAULT 'unknown'"), ("call_uuid", "VARCHAR(100) DEFAULT ''")]:
+                try:
+                    await conn.execute(f"ALTER TABLE call_logs ADD COLUMN IF NOT EXISTS {col} {typ}")
+                except Exception:
+                    pass
 
-    def start_call(self, caller_number: str):
+    def start_call(self, caller_number: str, to_number: str = "unknown", call_uuid: str = "unknown"):
         self.call_start_time = time.time()
         self.caller_number = caller_number or "unknown"
+        self.to_number = to_number or "unknown"
+        self.call_uuid = call_uuid or "unknown"
         self.transcript_parts = []
         self.detected_intents = []
 
@@ -208,16 +225,18 @@ class CallLogger:
             async with self.pool.acquire() as conn:
                 await conn.execute(
                     """
-                    INSERT INTO call_logs (caller_number, transcript, detected_intent, duration_seconds, timestamp)
-                    VALUES ($1, $2, $3, $4, $5)
+                    INSERT INTO call_logs (caller_number, to_number, call_uuid, transcript, detected_intent, duration_seconds, timestamp)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7)
                     """,
                     self.caller_number,
+                    self.to_number,
+                    self.call_uuid,
                     transcript,
                     intent,
                     duration,
                     datetime.now(timezone.utc),
                 )
-            logger.info(f"Call logged: {self.caller_number}, {duration:.1f}s, intent={intent}")
+            logger.info(f"Call logged: {self.caller_number} -> {self.to_number}, {duration:.1f}s, intent={intent}")
         except Exception as e:
             logger.error(f"Failed to log call: {e}")
 
@@ -226,20 +245,36 @@ class CallLogger:
             await self.pool.close()
 
 
+@app.get("/health")
+async def health():
+    """Health check endpoint for Railway monitoring."""
+    return {"status": "healthy", "service": "acme-receptionist"}
+
+
 @app.api_route("/answer", methods=["GET", "POST"])
 @app.api_route("/", methods=["GET", "POST"])
-async def answer(
-    request: Request,
-    CallUUID: str = Query(None),
-    From: str = Query(None),
-    To: str = Query(None),
-):
-    """Plivo Answer URL."""
+async def answer(request: Request):
+    """Plivo Answer URL — handles both GET (query params) and POST (form body)."""
+    # Extract params from query string OR form body
+    if request.method == "POST":
+        form = await request.form()
+        params = dict(form)
+    else:
+        params = dict(request.query_params)
+
+    caller = params.get("From", "unknown")
+    to_number = params.get("To", "unknown")
+    call_uuid = params.get("CallUUID", "unknown")
+
     host = request.headers.get("host", "localhost")
     ws_url = f"wss://{host}/ws"
 
-    if From:
-        logger.info(f"Incoming call: {From} -> {To}, CallUUID: {CallUUID}")
+    logger.info(f"Incoming call: {caller} -> {to_number}, CallUUID: {call_uuid}")
+
+    # Store caller info so WebSocket handler can access it
+    _pending_calls[call_uuid] = {"from": caller, "to": to_number, "call_uuid": call_uuid}
+    # Also store by caller number as fallback
+    _pending_calls[caller] = {"from": caller, "to": to_number, "call_uuid": call_uuid}
 
     xml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
@@ -258,6 +293,7 @@ async def get_call_logs():
     if not postgres_url:
         return {"error": "POSTGRES_URL not configured"}
     try:
+        import asyncpg
         conn = await asyncpg.connect(postgres_url)
         rows = await conn.fetch("SELECT * FROM call_logs ORDER BY timestamp DESC LIMIT 20")
         await conn.close()
@@ -280,7 +316,30 @@ async def websocket_endpoint(websocket: WebSocket):
         transport_type, call_data = await parse_telephony_websocket(websocket)
         logger.info(f"Transport: {transport_type}, data: {call_data}")
 
-        call_logger.start_call(call_data.get("from", "unknown"))
+        # Get caller info from /answer endpoint
+        # Try matching by call_id, stream_id, or grab the most recent pending call
+        call_id = call_data.get("call_id", "")
+        stream_id = call_data.get("stream_id", "")
+        caller_info = (
+            _pending_calls.pop(call_id, None)
+            or _pending_calls.pop(stream_id, None)
+            or (list(_pending_calls.values())[-1] if _pending_calls else {})
+        )
+        # Clean up any remaining entries for this call
+        if caller_info:
+            for k, v in list(_pending_calls.items()):
+                if v.get("call_uuid") == caller_info.get("call_uuid"):
+                    _pending_calls.pop(k, None)
+
+        logger.info(f"call_data keys: {call_data}")
+        logger.info(f"caller_info resolved: {caller_info}")
+
+        caller_number = caller_info.get("from", call_data.get("from", "unknown"))
+        to_number = caller_info.get("to", "unknown")
+        call_uuid = caller_info.get("call_uuid", call_id)
+
+        call_logger.start_call(caller_number, to_number, call_uuid)
+        logger.info(f"Call started: {caller_number} -> {to_number}, UUID: {call_uuid}")
 
         serializer = PlivoFrameSerializer(
             stream_id=call_data["stream_id"],
@@ -301,30 +360,38 @@ async def websocket_endpoint(websocket: WebSocket):
             ),
         )
 
-        # Reuse pre-warmed AI services (no cold-start per call)
-        llm = _warm_llm
-        stt = _warm_stt
-        tts = _warm_tts
+        # Fresh service instances per call (shared instances break after first
+        # call because ElevenLabs/Deepgram WebSocket connections get closed)
+        llm = OpenAILLMService(api_key=os.getenv("OPENAI_API_KEY"), model="gpt-4.1-mini")
+        stt = DeepgramSTTService(api_key=os.getenv("DEEPGRAM_API_KEY"))
+        tts = ElevenLabsTTSService(
+            api_key=os.getenv("ELEVENLABS_API_KEY"),
+            voice_id=os.getenv("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM"),
+        )
+
+        # Transcript capture processor
+        transcript_processor = TranscriptProcessor(call_logger)
 
         # Register function handlers
         async def handle_get_business_hours(params: FunctionCallParams):
             call_logger.add_intent("hours_inquiry")
             logger.info("Function: get_business_hours")
             await params.result_callback({
-                "weekday_hours": "Monday to Friday, 9 AM to 5 PM Pacific time",
-                "weekend_hours": "Closed on Saturday and Sunday",
-                "holidays": "Closed on major US holidays",
-                "timezone": "Pacific Time (PT)",
+                "weekday_hours": "Monday to Friday, 9 AM to 6 PM Pacific Time",
+                "support_hours": "24/7 support available for premium plans",
+                "weekend_hours": "Limited support on weekends for enterprise customers",
+                "timezone": "Pacific Time (PT), with global support teams",
             })
 
         async def handle_get_location(params: FunctionCallParams):
             call_logger.add_intent("location_inquiry")
             logger.info("Function: get_location")
             await params.result_callback({
-                "address": "123 Main Street, San Francisco, CA 94105",
-                "cross_streets": "Near the corner of Main and Market",
-                "parking": "Street parking available, paid garage next door",
-                "public_transit": "Two blocks from Montgomery BART station",
+                "headquarters": "340 S Lemon Ave, Suite 1116, Walnut, CA 91789, USA",
+                "austin_office": "Austin, Texas",
+                "bangalore_office": "Bangalore, India",
+                "website": "plivo.com",
+                "contact_email": "support@plivo.com",
             })
 
         async def handle_transfer_to_sales(params: FunctionCallParams):
@@ -353,25 +420,25 @@ async def websocket_endpoint(websocket: WebSocket):
             standard_tools=[
                 FunctionSchema(
                     name="get_business_hours",
-                    description="Get business hours for Acme Corp including weekday, weekend, and holiday hours.",
+                    description="Get business hours for Plivo Inc including weekday, weekend, and support hours.",
                     properties={},
                     required=[],
                 ),
                 FunctionSchema(
                     name="get_location",
-                    description="Get the physical address, directions, parking, and transit info for Acme Corp.",
+                    description="Get office locations, address, and contact info for Plivo Inc.",
                     properties={},
                     required=[],
                 ),
                 FunctionSchema(
                     name="transfer_to_sales",
-                    description="Transfer the caller to the sales department.",
+                    description="Transfer caller to Plivo sales team for pricing, demos, or product inquiries.",
                     properties={},
                     required=[],
                 ),
                 FunctionSchema(
                     name="transfer_to_support",
-                    description="Transfer the caller to the support department.",
+                    description="Transfer caller to Plivo support team for technical issues or account help.",
                     properties={},
                     required=[],
                 ),
@@ -394,6 +461,7 @@ async def websocket_endpoint(websocket: WebSocket):
             [
                 transport.input(),
                 stt,
+                transcript_processor,
                 user_aggregator,
                 llm,
                 tts,
@@ -418,7 +486,7 @@ async def websocket_endpoint(websocket: WebSocket):
             logger.info("Caller connected - sending instant greeting")
             # Send greeting directly to TTS (skips LLM round trip = ~1-2s faster)
             await task.queue_frames([
-                TTSSpeakFrame("Hello, thank you for calling Acme Corp. How can I help you today?")
+                TTSSpeakFrame("Hello, thank you for calling Plivo. How can I help you today?")
             ])
 
         @transport.event_handler("on_client_disconnected")
@@ -443,25 +511,13 @@ async def websocket_endpoint(websocket: WebSocket):
 
 if __name__ == "__main__":
     logger.info("=" * 60)
-    logger.info("Project 4: Improved AI Receptionist")
+    logger.info("Acme Corp AI Receptionist (Pipecat + Plivo)")
     logger.info("=" * 60)
-    logger.info(f"Server: http://0.0.0.0:{SERVER_PORT}")
-    logger.info(f"Answer URL: http://0.0.0.0:{SERVER_PORT}/")
-    logger.info(f"Call Logs:  http://0.0.0.0:{SERVER_PORT}/calls")
-    logger.info(f"WebSocket:  ws://0.0.0.0:{SERVER_PORT}/ws")
-    logger.info("")
-    logger.info("Improvements over Project 3:")
-    logger.info("  - Interruption handling (allow_interruptions=True)")
-    logger.info("  - Conversation context memory (follow-up questions work)")
-    logger.info("  - Graceful ending ('Thank you for calling... Goodbye!')")
-    logger.info("  - Error recovery ('I'm having trouble hearing you...')")
-    logger.info("  - Tuned VAD for phone audio quality")
-    logger.info("")
-    logger.info("Test scenarios:")
-    logger.info("  1. Interrupt: Start speaking while bot is talking")
-    logger.info("  2. Context: Ask about hours, then 'what about weekends?'")
-    logger.info("  3. Ending: Say 'that's all, thanks'")
-    logger.info("  4. Error: Make noise or mumble")
+    logger.info(f"Server:  http://0.0.0.0:{SERVER_PORT}")
+    logger.info(f"Health:  http://0.0.0.0:{SERVER_PORT}/health")
+    logger.info(f"Answer:  http://0.0.0.0:{SERVER_PORT}/answer")
+    logger.info(f"Calls:   http://0.0.0.0:{SERVER_PORT}/calls")
+    logger.info(f"WS:      ws://0.0.0.0:{SERVER_PORT}/ws")
     logger.info("=" * 60)
 
     uvicorn.run(app, host="0.0.0.0", port=SERVER_PORT)

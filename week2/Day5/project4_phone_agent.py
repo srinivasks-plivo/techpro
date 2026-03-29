@@ -118,7 +118,8 @@ async def entrypoint(ctx: JobContext):
         ),
         tts=elevenlabs.TTS(
             voice_id="EXAVITQu4vr4xnSDxMaL",  # Sarah - natural, warm female voice
-            model="eleven_turbo_v2_5",
+            model="eleven_multilingual_v2",
+            encoding="pcm_24000",
             language="en",
         ),
         turn_detection=MultilingualModel(),

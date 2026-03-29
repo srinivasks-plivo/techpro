@@ -29,12 +29,54 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, Query, Request, WebSocket
 from fastapi.responses import Response as FastAPIResponse
 from loguru import logger
+from pipecat.adapters.schemas.function_schema import FunctionSchema
+from pipecat.adapters.schemas.tools_schema import ToolsSchema
+from pipecat.audio.vad.silero import SileroVADAnalyzer
+from pipecat.frames.frames import LLMRunFrame, TTSSpeakFrame
+from pipecat.pipeline.pipeline import Pipeline
+from pipecat.pipeline.runner import PipelineRunner
+from pipecat.pipeline.task import PipelineParams, PipelineTask
+from pipecat.processors.aggregators.llm_context import LLMContext
+from pipecat.processors.aggregators.llm_response_universal import (
+    LLMContextAggregatorPair,
+    LLMUserAggregatorParams,
+)
+from pipecat.runner.utils import parse_telephony_websocket
+from pipecat.serializers.plivo import PlivoFrameSerializer
+from pipecat.services.deepgram.stt import DeepgramSTTService
+from pipecat.services.elevenlabs.tts import ElevenLabsTTSService
+from pipecat.services.llm_service import FunctionCallParams
+from pipecat.services.openai.llm import OpenAILLMService
+from pipecat.transports.websocket.fastapi import (
+    FastAPIWebsocketParams,
+    FastAPIWebsocketTransport,
+)
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env", override=True)
 
 app = FastAPI(title="AI Receptionist", description="Acme Corp AI phone receptionist")
 
 SERVER_PORT = int(os.getenv("SERVER_PORT", 8765))
+
+# ---------------------------------------------------------------------------
+# WARM-START: Pre-initialize expensive resources at server startup
+# ---------------------------------------------------------------------------
+logger.info("Warm-start: Loading Silero VAD model...")
+_warm_vad = SileroVADAnalyzer()
+logger.info("Warm-start: Silero VAD model ready")
+
+_warm_llm = OpenAILLMService(
+    api_key=os.getenv("OPENAI_API_KEY"),
+    model="gpt-4.1-mini",
+)
+_warm_stt = DeepgramSTTService(
+    api_key=os.getenv("DEEPGRAM_API_KEY"),
+)
+_warm_tts = ElevenLabsTTSService(
+    api_key=os.getenv("ELEVENLABS_API_KEY"),
+    voice_id=os.getenv("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM"),
+)
+logger.info("Warm-start: AI services (LLM, STT, TTS) pre-initialized")
 
 RECEPTIONIST_SYSTEM_PROMPT = """You are a friendly receptionist for Acme Corp.
 
@@ -179,7 +221,8 @@ class CallLogger:
             await self.pool.close()
 
 
-@app.get("/")
+@app.api_route("/answer", methods=["GET", "POST"])
+@app.api_route("/", methods=["GET", "POST"])
 async def answer(
     request: Request,
     CallUUID: str = Query(None),
@@ -231,29 +274,6 @@ async def websocket_endpoint(websocket: WebSocket):
     await call_logger.connect()
 
     try:
-        from pipecat.adapters.schemas.function_schema import FunctionSchema
-        from pipecat.adapters.schemas.tools_schema import ToolsSchema
-        from pipecat.audio.vad.silero import SileroVADAnalyzer
-        from pipecat.frames.frames import LLMRunFrame
-        from pipecat.pipeline.pipeline import Pipeline
-        from pipecat.pipeline.runner import PipelineRunner
-        from pipecat.pipeline.task import PipelineParams, PipelineTask
-        from pipecat.processors.aggregators.llm_context import LLMContext
-        from pipecat.processors.aggregators.llm_response_universal import (
-            LLMContextAggregatorPair,
-            LLMUserAggregatorParams,
-        )
-        from pipecat.runner.utils import parse_telephony_websocket
-        from pipecat.serializers.plivo import PlivoFrameSerializer
-        from pipecat.services.deepgram.stt import DeepgramSTTService
-        from pipecat.services.elevenlabs.tts import ElevenLabsTTSService
-        from pipecat.services.llm_service import FunctionCallParams
-        from pipecat.services.openai.llm import OpenAILLMService
-        from pipecat.transports.websocket.fastapi import (
-            FastAPIWebsocketParams,
-            FastAPIWebsocketTransport,
-        )
-
         # Parse Plivo WebSocket connection
         transport_type, call_data = await parse_telephony_websocket(websocket)
         logger.info(f"Transport: {transport_type}, call data: {call_data}")
@@ -278,20 +298,10 @@ async def websocket_endpoint(websocket: WebSocket):
             ),
         )
 
-        # Initialize AI services
-        llm = OpenAILLMService(
-            api_key=os.getenv("OPENAI_API_KEY"),
-            model="gpt-4.1-mini",
-        )
-
-        stt = DeepgramSTTService(
-            api_key=os.getenv("DEEPGRAM_API_KEY"),
-        )
-
-        tts = ElevenLabsTTSService(
-            api_key=os.getenv("ELEVENLABS_API_KEY"),
-            voice_id=os.getenv("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM"),
-        )
+        # Reuse pre-warmed AI services (no cold-start per call)
+        llm = _warm_llm
+        stt = _warm_stt
+        tts = _warm_tts
 
         # Register function handlers for intent detection
         async def handle_get_business_hours(params: FunctionCallParams):
@@ -377,7 +387,7 @@ async def websocket_endpoint(websocket: WebSocket):
         user_aggregator, assistant_aggregator = LLMContextAggregatorPair(
             context,
             user_params=LLMUserAggregatorParams(
-                vad_analyzer=SileroVADAnalyzer(),
+                vad_analyzer=_warm_vad,
             ),
         )
 
@@ -405,14 +415,11 @@ async def websocket_endpoint(websocket: WebSocket):
 
         @transport.event_handler("on_client_connected")
         async def on_client_connected(transport, client):
-            logger.info("Caller connected - greeting")
-            messages.append(
-                {
-                    "role": "system",
-                    "content": "The caller has just connected. Greet them with: Hello, thank you for calling Acme Corp. How can I help you today?",
-                }
-            )
-            await task.queue_frames([LLMRunFrame()])
+            logger.info("Caller connected - sending instant greeting")
+            # Send greeting directly to TTS (skips LLM round trip = ~1-2s faster)
+            await task.queue_frames([
+                TTSSpeakFrame("Hello, thank you for calling Acme Corp. How can I help you today?")
+            ])
 
         @transport.event_handler("on_client_disconnected")
         async def on_client_disconnected(transport, client):

@@ -1,0 +1,7 @@
+pipecat-ai[silero,deepgram,openai,elevenlabs,plivo]>=0.0.60
+fastapi>=0.104.0
+python-multipart>=0.0.6
+uvicorn>=0.24.0
+websockets>=12.0
+asyncpg>=0.29.0
+loguru>=0.7.0
